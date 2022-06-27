@@ -1,0 +1,263 @@
+#对Cogent中unfuzzy的解读
+The collapse script has a --fuzzy_junction parameter.
+That is, two transcripts that have the same mapped exonic structures except the junctions are different by a small amount (default: 5 bp) will still be considered identical and collapsed.
+Most likely, small number of junction diff (5 bp or less) are caused by residual errors not well aligned by GMAP or other aligners.
+
+samtools view x.bam | awk '$3=="*" {print ">"$1"\n"$10}' >x_no_mapped_reads.txt
+#变异检测概念
+CNV：拷贝数变异检测
+SV：结构变异
+SNP：单核苷酸多态性
+INDEL=Insertion+Deletion
+PAV:存在缺失变异
+
+#blastn表头
+[Query_id][Subject_id][identity][alignment_length][mismatches][gap_openings][q.start][q.end][s.start][s.end][e-value][bit_score]
+
+#freenas路径
+/home/dell/freenas/Yang/zjlxzjh/...
+
+#根据做好的yml环境拷贝conda环境
+conda env export > environment.yml
+conda env create -f environment.yml
+pip freeze > env.txt
+pip install -r env.txt
+
+#fastq to fasta
+awk '{if(NR%4 == 1){print ">" substr($0, 2)}}{if(NR%4 == 2){print}}' test.fastq > test.fasta
+
+#提取第一列
+awk '{print $1}' test.txt > test_1d.txt
+
+#查看fasta几条序列
+grep -c ">" test.fasta
+
+#打开VNC窗口1
+vncserver :1
+
+#conda所有环境名
+conda env list
+
+#ascp下载
+ascp.exe -P33001 -v -k 1 -T -l 200m -i D:\Allsoftware\Aspera\AsperaConnect\etc\asperaweb_id_dsa.openssh anonftp@ftp.ncbi.nlm.nih.gov:/###/******.sra
+
+#diamond
+mkdir index
+diamond makedb --in ref.fasta -d index/ref
+diamond blastn -d ref -q test.fa -e 1e-5 -f 8 -o out.m8 -k 10 -p 2
+diamond blastx -d index_nr/nr_ref.dmnd -q test.fasta -e 1e-5 -f 6 -o out.m6 -k 1 -p 10 --max-hsps 1
+
+#blastn
+mkdir index
+makeblastdb -in testA.fasta -dbtype nucl -parse_seqids -hash_index -out ./index/indexA
+blastn -db ./index/index -query testB.fa -out testB_A.out -evalue 0.00001 -max_target_seqs 1 -num_threads 10 -outfmt 8
+blastn -query query.fasta -out gene.blast.txt -task megablast -db index/indexSspon -num_threads 10 -evalue 1e-10 -best_hit_score_edge 0.05 -best_hit_overhang 0.25 -outfmt 6 -perc_identity 50 -max_target_seqs 4
+
+#gff2gtf
+gffread test.gff -T -o test.gtf
+
+#Trinity使用（分别是双端测序文件与单端测序文件）
+Trinity --seqType fq --left test1.fq --right test2.fq --CPU 25 --max_memory 100G
+Trinity --seqType fa --single test.fasta --CPU 25 --max_memory 100G --output ./Trinity/ --no_distributed_trinity_exec\
+#Trinity使用（有参组装）
+Trinity --genome_guided_bam test.sort.bam --max_memory 50G --genome_guided_max_intron 10000 --CPU 30
+
+#Trinity组装统计
+TrinityStats.pl Trinity.fasta > trinitystats_out
+
+#Trinity遍历脚本
+find preCluster_out/*/ -name isoseq_flnc.fasta | cd splicing_Trinity/ mkdir * |cd .. | Trinity --seqType fa --single - --CPU 30 --max_memory 100G --output splicing_Trinity/*/ --no_distributed_trinity_exec
+
+#SUPPA使用
+suppa.py generateEvents -i hq_isoforms.fasta.no5merge.collapsed.gtf -o LL_gtf -f ioi
+suppa.py generateEvents -i hq_isoforms.fasta.no5merge.collapsed.gtf -o LL_gtf -f ioe -e SE SS MX RI
+
+#gmap使用
+mkdir reference
+gmap_build -D reference/ -d reference test.rep.fasta
+gmap -D reference/ -d reference -n 1 -t 30 -f samse test.fasta > test_rep.sam
+
+#sam to bam
+samtools view -bS test.sam > test.bam
+samtools sort test.bam -o test.sort.bam -O BAM
+samtools index test.sorted.bam test.sorted.bam.bai
+samtools depth test.sorted.bam > depth_reads.txt
+
+
+#用R可视化gff/gtf文件
+安装好R和Rstudio
+install.packages("BiocManager")
+BiocManager::install("GenomicFeatures")
+切换工作文件夹，Session里的Set Working Derictory
+library(GenomicFeatures)
+txdb<-makeTxDbFromGFF(file="hq_isoforms.fasta.no5merge.collapsed.gtf",format="auto")
+library(ggbio)
+autoplot(txdb,
+         which=GRanges("1060_0|path0", IRanges(100, 15000)),
+         names.expr = "gene_id",aes(fill=gene_id))+
+  theme_bw()
+备注：1060_0|path0是gff文件中第一列的基因组名称，挑选一个输入。IRanges(100, 9000)是指碱基显示范围。
+
+#cd-hit
+cd-hit-est -i LL.unmap.fasta -o LL.unmap.rmdup.fasta -d 0 -p 1 -T 30 -M 500000 -G 0 -aL 0.9 -AL 100 -aS 0.99 -AS 30
+cd-hit-est -i input.fasta -o output.fasta -c 1 -d 0 -p 1 -T 25 -M 50000 -G 0 -aL 1 -AL 0 -aS 1 -AS 0
+-g 1 精确比对 -p 1 显示overlap
+
+
+#TAPIS-pipline
+mkdir index
+gmap_build -D reference/ -d reference test.rep.fasta
+nohup alignPacBio.py refindex/ reference Soff_Sspon_ref_rmdup.fasta 4to1_isoforms_changeID_cd99.fasta --verbose -o filtered -p 30 &
+stringtie aligned.bam -o alignstring.gtf
+nohup run_tapis.py -v -p alignstring.gtf aligned.bam &
+
+
+#iso_pipline
+perl /root/software/isoseq_pipline/Bin/phase_allotetraploid_pipeline.pl --flnc LL.flnc.fastq --gmap_genome_directory /home/dell/1.20210416/refindex/ --gmap_genome_database reference --reference_fasta /home/dell/1.20210416/Soff_Sspon_ref_rmdup.fasta --outdir ./outdir
+
+#bwa
+bwa index -a bwtsw -p ref Soff_Sspon_ref_rmdup.fasta 1>ref.bwa_index
+bwa mem -t 30 -M ./ref R20061004_R1.fq R20061004_R2.fq >LL2g.sam
+
+#bam转fasta
+samtools view LL.fl.n2.5-3.bam -O SAM |  awk -F"\t" '{print ">"$1"\n"$10}' > LL.fl.n2.fa
+
+#根据重复ID去除序列
+seqkit rmdup -n -i Soff.v20201208.cds.fasta -o Soff.v20201208.cds.rmdup.fasta
+
+#切除polyA
+cutadapt -a "A{10}" -o output.fastq input.fastq
+
+#清空vim
+：1,$d
+
+#minimap
+minimap2 -t 30 -N 5 --secondary=no -a Sspon.HiC_chr_asm.fasta test.fasta -o test.sam
+minimap2 -H -d ref.mmi ref.fa
+minimap2 -ax map-pb cogent.fake_genome.fasta hq_isoforms.fasta | samtools view -hF 256 - | samtools sort -@ 36 -m 3G -o aligned.bam -T tmp.ali
+
+#cp列表参数过长改这个
+find ./ -name "*.fasta" -exec mv {} ../allele_ref/ \;
+#cat列表参数过长改这个
+find ./group/ -name "*.fasta" -exec cat {} > ./iso.fasta \;
+#批量改文件名后缀
+find . -name "*.sh" -exec rename .sh .shell {} \;
+
+# fmf
+/home/dell/freenas/Yang/zjlxzjh/fmengfan/software/vcftools-master/src/perl/vcf-merge test1.vcf.gz test2.vcf.gz > 12merged.vcf
+
+# interproscan
+/home/dell/interpro/interproscan-5.48-83.0/interproscan.sh -dp -t n -i ./test4.fasta -iprlookup -goterms -pa -cpu 30 -f tsv -o test4.tsv
+1. 蛋白质接入号
+2. 序列的 MD5 值
+3. 序列长度
+4. 不同分析方案
+5. 签名号
+6. 签名描述
+7. 起始位置
+8. 终止位置
+9. 得分
+10. 状态
+11. 运行日期
+12... 其他
+
+# 二代数据批量质控
+#!/bin/bash
+for i in 20061004 20061006 20061008 20070376 20070378 20070380 20070388 20070390 20070392;do
+  {
+  fastp -i R${i}_R1.fq.gz -o clean_data/R${i}_R1_clean.fq.gz -I R${i}_R2.fq.gz -O clean_data/R${i}_R2_clean.fq.gz -w 16 --html R${i}.html --json R${i}.json
+  } 
+done 
+
+# yum出问题怎么办？
+cd /etc/yum.repos.d/
+只保留CentOS-Base.repo
+yum clean all
+yum makecache
+
+#增加可写权限
+vim /etc/sudoers
+chmod -v u+w /etc/sudoers
+
+bwa mem -t 30 -M ../../Part_1.fasta /home/dell/freenas/Yang/zjlxzjh/GDDMRB20050180-2G-raw-data/GDDMRB20050180_order_1/LLmerge/clean_data/R20061004_R1_clean.fq.gz /home/dell/freenas/Yang/zjlxzjh/GDDMRB20050180-2G-raw-data/GDDMRB20050180_order_1/LLmerge/clean_data/R20061004_R2_clean.fq.gz > LL1-1.sam 2> LL1-1.log
+
+bedtools bamtobed -split -i aligned.bam > aligned.bed
+bedToGenePred aligned.bed stdout | genePredToGtf file stdin aligned.gtf
+
+mount -t nfs 172.24.129.69:/mnt/Data /home/dell/freenas2
+
+Full installation of GNU Parallel is as simple as:
+
+# linux并行运算
+# idea1
+wget https://ftpmirror.gnu.org/parallel/parallel-20210822.tar.bz2
+wget https://ftpmirror.gnu.org/parallel/parallel-20210822.tar.bz2.sig
+gpg parallel-20210822.tar.bz2.sig
+bzip2 -dc parallel-20210822.tar.bz2 | tar xvf -
+cd parallel-20210822
+./configure && make && sudo make install
+
+# idea2
+(wget -O - pi.dk/3 || curl pi.dk/3/) | bash
+
+# 纯净输出
+parallel --citation
+
+#具体使用，让n个脚本同时bash
+ls test*.sh | parallel -j 35 -N1 --linebuffer -m sh
+
+#开机执行固定命令
+chmod +x /etc/rc.d/rc.local
+
+#linux批量改文件名
+find ./ -name "*.bam.sort" -exec rename .bam.sort .sort.bam {} \;
+
+#interproscan使用
+./interproscan.sh -appl PANTHER -f TSV,GFF3 -t n -i trans.fasta -cpu 5 -b transcript -goterms -iprlookup -pa -dp
+
+#busco
+run_BUSCO.py -i gene_Ref.fasta -l database/embryophyta_odb10 -o longGene -m transcriptome --cpu 30
+
+stringtie -p 20 -L aligned.sort.bam -o aligned.gtf
+
+samtools view LS.flnc.bam | awk '{OFS="\t"; print ">"$1"\n"$10}' - > LS.flnc.fasta
+
+sort -k1,1 -k4,4n -k5,5n hg19.gtf > hg19.sort.gtf
+igvtools index hg19.sort.gtf
+
+awk 'FNR==1 && NR!=1 { while (/^<header>/) getline; } 1 {print}' *.ioe > LL.events.ioe
+
+TransDecoder.LongOrfs -t Trinity-GG.fasta
+TransDecoder.Predict -t Trinity-GG.fasta
+
+sed -i 's/\r//g' test_LL.gtf
+
+gmap -D ../reference/ -d reference -n 1 -t 30 --min-identity 0.99 -f gff3_gene LL.flnc.fasta > LL.gff3 2>LL_log
+
+stringtie --merge -i -l fusion -p 30 -o fusion_plus.gtf  mergelist.txt
+cat merged.cat.gtf | awk -F '\t' -v OFS=',' '{$1=$1;print}' | sort -t, -k1,1 -k4,5n | awk -F ',' -v OFS='\t' '{$1=$1;print}' > merged.cat.sorted.gtf
+
+tophat --read-realign-edit-dist 0 -o ./tophat_out -r 20 --mate-std-dev 20 --coverage-search --microexon-search -p 30 --library-type fr-unstranded SsponSoff LL1-123/R20061004_R1_clean.fq.gz LL1-123/R20061004_R2_clean.fq.gz
+
+rmats2sashimiplot --b1 ../../Sspon_bam/R20061004.sort.bam,../../Sspon_bam/R20061006.sort.bam,../../Sspon_bam/R20061008.sort.bam --b2 ../../Sspon_bam/R20061002.sort.bam,../../Sspon_bam/R20061010.sort.bam,../../Sspon_bam/R20061012.sort.bam --l1 LL --l2 HL --exon_s 1 --intron_s 5 --min-counts 0 -t SE -e SE.MATS.JC.txt -o sashimiplot_dir
+
+rmats2sashimiplot --b1 ../../Sspon_bam/R20061004.sort.bam,../../Sspon_bam/R20061006.sort.bam,../../Sspon_bam/R20061008.sort.bam --b2 ../../Sspon_bam/R20061002.sort.bam,../../Sspon_bam/R20061010.sort.bam,../../Sspon_bam/R20061012.sort.bam --l1 LL --l2 HL --exon_s 1 --intron_s 5 --min-counts 0 -t MXE -e ../AS_filter/MXE.MATS.JC.filter.txt -o sashimiplot_dir_MXE_filter --group-info ../grouping.gf
+grouping.gf:
+firstGroup: 1,2,3
+secondGroup: 4,5,6
+
+#channels:
+#  - bioconda
+#  - r
+#  - conda-forge
+#  - defaults
+#channel_priority: flexible
+#show_channel_urls: true
+
+bioawk -c fastx '{print}' old.genome.fa |  sort -k1,1V | awk '{print ">"$1;print $2}' > new.genome.fa
+
+build_classifiers.py -f ../Combined.genome.fasta -m ../Four_merge.combined_classification.filtered_lite.gtf -d gt,gc,at -a ag,ac -l create_classifiers.log
+
+
+pm2 start app.js
+pm2 stop app.js
