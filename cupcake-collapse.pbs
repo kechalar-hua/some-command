@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -N collapse
+#PBS -l select=1:ncpus=5
+#PBS -q zf
+#PBS -j oe
+cd $PBS_O_WORKDIR
+NPROCS=`wc -l < $PBS_NODEFILE`
+# >>> conda initialize >>>
+
+ !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/public/home/zjh/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/public/home/zjh/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "/public/home/zjh/miniconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/public/home/zjh/miniconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+
+# <<< conda initialize <<<
+conda activate anaCogent
+collapse_isoforms_by_sam.py --input /public/home/zjh/1.my_work/FLNC_fasta/FLL.flnc.fasta -s /public/home/zjh/1.my_work/FLL.flnc.sort.sam -c 0.99 -i 0.99 -o /public/home/zjh/1.my_work/collapse/LL_flnc/FLL.flnc
+collapse_isoforms_by_sam.py --input /public/home/zjh/1.my_work/FLNC_fasta/FLS.flnc.fasta -s /public/home/zjh/1.my_work/FLS.flnc.sort.sam -c 0.99 -i 0.99 -o /public/home/zjh/1.my_work/collapse/LS_flnc/FLS.flnc
+collapse_isoforms_by_sam.py --input /public/home/zjh/1.my_work/FLNC_fasta/FHL.flnc.fasta -s /public/home/zjh/1.my_work/FHL.flnc.sort.sam -c 0.99 -i 0.99 -o /public/home/zjh/1.my_work/collapse/HL_flnc/FHL.flnc
+collapse_isoforms_by_sam.py --input /public/home/zjh/1.my_work/FLNC_fasta/FHS.flnc.fasta -s /public/home/zjh/1.my_work/FHS.flnc.sort.sam -c 0.99 -i 0.99 -o /public/home/zjh/1.my_work/collapse/HS_flnc/FHS.flnc
+conda deactivate 
